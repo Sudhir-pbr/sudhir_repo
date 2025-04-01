@@ -1,11 +1,14 @@
+
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import Login from '../components/Login';
 import axios from 'axios';
-import MockAdapter from 'axios-mock-adapter';
-import Login from '../components/Login.jsx'; // Adjust path if needed
 
-// Mock react-router-dom's useNavigate
+// Mock axios
+jest.mock('axios');
+
+// Mock useNavigate
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
@@ -13,65 +16,114 @@ jest.mock('react-router-dom', () => ({
 }));
 
 describe('Login Component', () => {
-  let mock;
+  const mockOnLogin = jest.fn();
 
-  beforeAll(() => {
-    mock = new MockAdapter(axios);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Mock console.error to keep test output clean
     jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  beforeEach(() => {
-    mock.reset();
-    mockNavigate.mockClear();
-  });
-
-  afterAll(() => {
-    mock.restore();
+  afterEach(() => {
     console.error.mockRestore();
   });
 
-  it('renders login form', () => {
-    render(<MemoryRouter><Login /></MemoryRouter>);
-    expect(screen.getByLabelText('Username')).toBeInTheDocument();
-    expect(screen.getByLabelText('Password')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument();
+  const renderLogin = () => {
+    return render(
+      <MemoryRouter>
+        <Login onLogin={mockOnLogin} />
+      </MemoryRouter>
+    );
+  };
+
+  test('renders login form correctly', () => {
+    renderLogin();
+    
+    expect(screen.getByRole('heading', { name: /login/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /login/i })).toBeInTheDocument();
+    expect(screen.getByText(/don't have an account/i)).toBeInTheDocument();
   });
 
-  it('handles successful login', async () => {
-    mock.onGet('http://localhost:5000/user/testuser').reply(200, {
+  test('handles successful login and navigation', async () => {
+    const mockUser = {
       username: 'testuser',
-      password: 'password123',
-      email: 'test@example.com',
-      phone_number: '1234567890',
-    });
+      password: 'correctpassword'
+    };
+    
+    axios.get.mockResolvedValueOnce({ data: mockUser });
+    renderLogin();
 
-    render(<MemoryRouter><Login /></MemoryRouter>);
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'testuser' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
+    fireEvent.change(screen.getByLabelText(/username/i), {
+      target: { value: 'testuser' }
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: 'correctpassword' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /login/i }));
 
     await waitFor(() => {
+      expect(mockOnLogin).toHaveBeenCalledWith(mockUser);
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard', {
-        state: { username: 'testuser' },
+        state: { username: 'testuser' }
       });
     });
   });
 
-  it('displays error message on login failure', async () => {
-    mock.onGet('http://localhost:5000/user/testuser').reply(200, {
+  test('shows error when password is incorrect', async () => {
+    const mockUser = {
       username: 'testuser',
-      password: 'wrongpassword',
-      email: 'test@example.com',
-      phone_number: '1234567890',
-    });
+      password: 'correctpassword'
+    };
+    
+    axios.get.mockResolvedValueOnce({ data: mockUser });
+    renderLogin();
 
-    render(<MemoryRouter><Login /></MemoryRouter>);
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'testuser' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
+    fireEvent.change(screen.getByLabelText(/username/i), {
+      target: { value: 'testuser' }
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: 'wrongpassword' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /login/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Invalid username or password')).toBeInTheDocument();
+      expect(screen.getByText(/invalid username or password/i)).toBeInTheDocument();
+    });
+  });
+
+  test('shows error when user does not exist', async () => {
+    axios.get.mockRejectedValueOnce({ response: { status: 404 } });
+    renderLogin();
+
+    fireEvent.change(screen.getByLabelText(/username/i), {
+      target: { value: 'nonexistent' }
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: 'password123' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/invalid username or password/i)).toBeInTheDocument();
+    });
+  });
+
+  test('shows error when API request fails', async () => {
+    axios.get.mockRejectedValueOnce(new Error('Network Error'));
+    renderLogin();
+
+    fireEvent.change(screen.getByLabelText(/username/i), {
+      target: { value: 'testuser' }
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: 'password123' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/login failed/i)).toBeInTheDocument();
     });
   });
 });

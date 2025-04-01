@@ -82,7 +82,13 @@ const CourseDetails = () => {
 
   return (
     <div className="min-h-screen bg-[#F5F5F5] flex flex-col">
-      <Header username={username} onFetchUserDetails={fetchUserDetails} isScrolled={isScrolled} />
+      {/* <Header username={username} onFetchUserDetails={fetchUserDetails} isScrolled={isScrolled} /> */}
+      <Header 
+  isAuthenticated={!!username} 
+  user={{ username: username }}
+  onFetchUserDetails={fetchUserDetails}
+  isScrolled={isScrolled} 
+/>
       {showUserDetails && userDetails && (
         <div className="fixed right-0 top-[70px] bg-white shadow-md p-4 rounded-[5px] w-[200px] sm:w-[250px] z-10">
           <h3 className="text-base sm:text-lg font-bold mb-2 text-[#333]">User Details</h3>
